@@ -102,7 +102,7 @@ class DockerRuntime(AbstractRuntime):
             # Determine the target directory name in the container
             target_name = source.get("workspace_subdir")
             if not target_name:
-                target_name = local_path_obj.name if local_path_obj.name else f"target_{index}"
+                target_name = local_path_obj.name or f"target_{index}"
 
             # Build volume mount configuration
             host_path = str(local_path_obj)
@@ -310,7 +310,7 @@ class DockerRuntime(AbstractRuntime):
             )
             logger.info(f"Successfully copied directory '{local_path}' to container")
         except (OSError, DockerException) as e:
-            container_id = getattr(container, "id", "unknown")
+            container_id = container.id if container.id else "unknown"
             logger.exception(
                 f"Failed to copy directory '{local_path}' to container {container_id}. "
                 "This method is deprecated; use volume mounting instead."
