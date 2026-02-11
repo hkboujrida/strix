@@ -101,7 +101,9 @@ class DockerRuntime(AbstractRuntime):
                 ) from e
 
             # Determine the target directory name in the container
-            target_name = source.get("workspace_subdir") or local_path_obj.name or f"target_{index}"
+            target_name = source.get("workspace_subdir")
+            if not target_name:
+                target_name = local_path_obj.name if local_path_obj.name else f"target_{index}"
 
             # Build volume mount configuration
             host_path = str(local_path_obj)
@@ -277,6 +279,11 @@ class DockerRuntime(AbstractRuntime):
     def _copy_local_directory_to_container(
         self, container: Container, local_path: str, target_name: str | None = None
     ) -> None:
+        """Legacy method for copying directories to containers.
+
+        This method is deprecated in favor of volume mounting but kept for compatibility.
+        It should not be used for regular operations as it has performance and reliability issues.
+        """
         import logging
         import tarfile
         from io import BytesIO
@@ -306,9 +313,16 @@ class DockerRuntime(AbstractRuntime):
                 user="root",
             )
             logger.info(f"Successfully copied directory '{local_path}' to container")
-        except (OSError, DockerException):
-            logger.exception("Failed to copy directory to container")
-            raise  # Don't silently ignore errors
+        except (OSError, DockerException) as e:
+            container_id = getattr(container, "id", "unknown")
+            logger.exception(
+                f"Failed to copy directory '{local_path}' to container {container_id}. "
+                "This method is deprecated; use volume mounting instead."
+            )
+            raise SandboxInitializationError(
+                "Failed to copy files to container",
+                f"Unable to copy '{local_path}' to container {container_id}: {e}",
+            ) from e
 
     async def create_sandbox(
         self,
