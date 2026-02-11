@@ -1,4 +1,5 @@
 import contextlib
+import logging
 import os
 import secrets
 import socket
@@ -22,6 +23,7 @@ from .runtime import AbstractRuntime, SandboxInfo
 HOST_GATEWAY_HOSTNAME = "host.docker.internal"
 DOCKER_TIMEOUT = 60
 CONTAINER_TOOL_SERVER_PORT = 48081
+logger = logging.getLogger(__name__)
 
 
 class DockerRuntime(AbstractRuntime):
@@ -53,6 +55,67 @@ class DockerRuntime(AbstractRuntime):
         except (ImportError, AttributeError):
             pass
         return f"scan-{agent_id.split('-')[0]}"
+
+    def _prepare_volume_mounts(
+        self, local_sources: list[dict[str, str]] | None
+    ) -> dict[str, dict[str, str]] | None:
+        """Prepare Docker volume mount configuration from local sources.
+
+        Args:
+            local_sources: List of source dictionaries with 'source_path' and 'workspace_subdir'
+
+        Returns:
+            Dictionary mapping host paths to container mount configurations, or None if no sources
+
+        Raises:
+            SandboxInitializationError: If source path doesn't exist or isn't accessible
+        """
+        if not local_sources:
+            return None
+
+        volumes = {}
+
+        for index, source in enumerate(local_sources, start=1):
+            source_path = source.get("source_path")
+            if not source_path:
+                continue
+
+            # Resolve and validate the source path
+            try:
+                local_path_obj = Path(source_path).resolve()
+                if not local_path_obj.exists():
+                    raise SandboxInitializationError(
+                        "Source path does not exist",
+                        f"The path '{source_path}' does not exist on the host system.",
+                    )
+                if not local_path_obj.is_dir():
+                    raise SandboxInitializationError(
+                        "Source path is not a directory",
+                        f"The path '{source_path}' is not a directory.",
+                    )
+            except (OSError, RuntimeError) as e:
+                raise SandboxInitializationError(
+                    "Cannot access source path",
+                    f"Unable to access '{source_path}': {e}",
+                ) from e
+
+            # Determine the target directory name in the container
+            target_name = source.get("workspace_subdir")
+            if not target_name:
+                target_name = local_path_obj.name or f"target_{index}"
+
+            # Build volume mount configuration
+            host_path = str(local_path_obj)
+            container_path = f"/workspace/{target_name}"
+
+            volumes[host_path] = {
+                "bind": container_path,
+                "mode": "rw",  # Read-write access
+            }
+
+            logger.info(f"Mounting {host_path} -> {container_path}")
+
+        return volumes if volumes else None
 
     def _verify_image_available(self, image_name: str, max_retries: int = 3) -> None:
         for attempt in range(max_retries):
@@ -102,7 +165,9 @@ class DockerRuntime(AbstractRuntime):
             "Container initialization timed out. Please try again.",
         )
 
-    def _create_container(self, scan_id: str, max_retries: int = 2) -> Container:
+    def _create_container(
+        self, scan_id: str, volumes: dict[str, dict[str, str]] | None = None, max_retries: int = 2
+    ) -> Container:
         container_name = f"strix-scan-{scan_id}"
         image_name = Config.get("strix_image")
         if not image_name:
@@ -131,6 +196,7 @@ class DockerRuntime(AbstractRuntime):
                     name=container_name,
                     hostname=container_name,
                     ports={f"{CONTAINER_TOOL_SERVER_PORT}/tcp": self._tool_server_port},
+                    volumes=volumes,
                     cap_add=["NET_ADMIN", "NET_RAW"],
                     labels={"strix-scan-id": scan_id},
                     environment={
@@ -161,7 +227,9 @@ class DockerRuntime(AbstractRuntime):
             f"Container creation failed after {max_retries + 1} attempts: {last_error}",
         ) from last_error
 
-    def _get_or_create_container(self, scan_id: str) -> Container:
+    def _get_or_create_container(
+        self, scan_id: str, volumes: dict[str, dict[str, str]] | None = None
+    ) -> Container:
         container_name = f"strix-scan-{scan_id}"
 
         if self._scan_container:
@@ -205,17 +273,25 @@ class DockerRuntime(AbstractRuntime):
         except DockerException:
             pass
 
-        return self._create_container(scan_id)
+        return self._create_container(scan_id, volumes=volumes)
 
     def _copy_local_directory_to_container(
         self, container: Container, local_path: str, target_name: str | None = None
     ) -> None:
+        """Legacy method for copying directories to containers.
+
+        This method is deprecated in favor of volume mounting but kept for compatibility.
+        It should not be used for regular operations as it has performance and reliability issues.
+        """
         import tarfile
         from io import BytesIO
 
         try:
             local_path_obj = Path(local_path).resolve()
             if not local_path_obj.exists() or not local_path_obj.is_dir():
+                logger.warning(
+                    f"Path '{local_path}' does not exist or is not a directory, skipping copy"
+                )
                 return
 
             tar_buffer = BytesIO()
@@ -232,8 +308,17 @@ class DockerRuntime(AbstractRuntime):
                 "chown -R pentester:pentester /workspace && chmod -R 755 /workspace",
                 user="root",
             )
-        except (OSError, DockerException):
-            pass
+            logger.info(f"Successfully copied directory '{local_path}' to container")
+        except (OSError, DockerException) as e:
+            container_id = container.id if container.id else "unknown"
+            logger.exception(
+                f"Failed to copy directory '{local_path}' to container {container_id}. "
+                "This method is deprecated; use volume mounting instead."
+            )
+            raise SandboxInitializationError(
+                "Failed to copy files to container",
+                f"Unable to copy '{local_path}' to container {container_id}: {e}",
+            ) from e
 
     async def create_sandbox(
         self,
@@ -242,19 +327,12 @@ class DockerRuntime(AbstractRuntime):
         local_sources: list[dict[str, str]] | None = None,
     ) -> SandboxInfo:
         scan_id = self._get_scan_id(agent_id)
-        container = self._get_or_create_container(scan_id)
 
-        source_copied_key = f"_source_copied_{scan_id}"
-        if local_sources and not hasattr(self, source_copied_key):
-            for index, source in enumerate(local_sources, start=1):
-                source_path = source.get("source_path")
-                if not source_path:
-                    continue
-                target_name = (
-                    source.get("workspace_subdir") or Path(source_path).name or f"target_{index}"
-                )
-                self._copy_local_directory_to_container(container, source_path, target_name)
-            setattr(self, source_copied_key, True)
+        # Prepare volume mounts from local sources
+        volumes = self._prepare_volume_mounts(local_sources)
+
+        # Get or create container with volume mounts
+        container = self._get_or_create_container(scan_id, volumes=volumes)
 
         if container.id is None:
             raise RuntimeError("Docker container ID is unexpectedly None")
