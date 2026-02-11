@@ -1,4 +1,5 @@
 import contextlib
+import logging
 import os
 import secrets
 import socket
@@ -22,6 +23,7 @@ from .runtime import AbstractRuntime, SandboxInfo
 HOST_GATEWAY_HOSTNAME = "host.docker.internal"
 DOCKER_TIMEOUT = 60
 CONTAINER_TOOL_SERVER_PORT = 48081
+logger = logging.getLogger(__name__)
 
 
 class DockerRuntime(AbstractRuntime):
@@ -71,9 +73,6 @@ class DockerRuntime(AbstractRuntime):
         if not local_sources:
             return None
 
-        import logging
-
-        logger = logging.getLogger(__name__)
         volumes = {}
 
         for index, source in enumerate(local_sources, start=1):
@@ -284,11 +283,8 @@ class DockerRuntime(AbstractRuntime):
         This method is deprecated in favor of volume mounting but kept for compatibility.
         It should not be used for regular operations as it has performance and reliability issues.
         """
-        import logging
         import tarfile
         from io import BytesIO
-
-        logger = logging.getLogger(__name__)
 
         try:
             local_path_obj = Path(local_path).resolve()
