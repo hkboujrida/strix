@@ -135,6 +135,7 @@ COMMON MISTAKES TO AVOID:
 - Do NOT set start_line=end_line when the vulnerable code spans multiple lines. Cover the full range.
 - Do NOT put an import addition and a code change in the same fix_before/fix_after if they are not on adjacent lines. Split them into separate locations.
 - Do NOT include lines outside the vulnerable/fixed code in fix_before just to "pad" the range.
+- Do NOT duplicate changes across locations. Each location's fix_after must ONLY contain changes for its own line range. Never repeat a change that is already covered by another location.
 
 Each location element fields:
 - file (REQUIRED): Path relative to repository root. No leading slash, no absolute paths, no ".." traversal.
