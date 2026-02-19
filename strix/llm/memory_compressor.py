@@ -3,8 +3,8 @@ from typing import Any
 
 import litellm
 
-from strix.config import Config
-from strix.llm.utils import get_litellm_model_name, get_strix_api_base
+from strix.config.config import Config, resolve_llm_config
+from strix.llm.utils import get_litellm_model_name
 
 
 logger = logging.getLogger(__name__)
@@ -106,14 +106,7 @@ def _summarize_messages(
     conversation = "\n".join(formatted)
     prompt = SUMMARY_PROMPT_TEMPLATE.format(conversation=conversation)
 
-    api_key = Config.get("llm_api_key")
-    api_base = (
-        Config.get("llm_api_base")
-        or Config.get("openai_api_base")
-        or Config.get("litellm_base_url")
-        or Config.get("ollama_api_base")
-        or get_strix_api_base(model)
-    )
+    _, api_key, api_base = resolve_llm_config()
 
     try:
         litellm_model = get_litellm_model_name(model) or model

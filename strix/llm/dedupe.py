@@ -5,8 +5,8 @@ from typing import Any
 
 import litellm
 
-from strix.config import Config
-from strix.llm.utils import get_litellm_model_name, get_strix_api_base
+from strix.config.config import resolve_llm_config
+from strix.llm.utils import get_litellm_model_name
 
 
 logger = logging.getLogger(__name__)
@@ -156,15 +156,7 @@ def check_duplicate(
 
         comparison_data = {"candidate": candidate_cleaned, "existing_reports": existing_cleaned}
 
-        model_name = Config.get("strix_llm")
-        api_key = Config.get("llm_api_key")
-        api_base = (
-            Config.get("llm_api_base")
-            or Config.get("openai_api_base")
-            or Config.get("litellm_base_url")
-            or Config.get("ollama_api_base")
-            or get_strix_api_base(model_name)
-        )
+        model_name, api_key, api_base = resolve_llm_config()
 
         messages = [
             {"role": "system", "content": DEDUPE_SYSTEM_PROMPT},

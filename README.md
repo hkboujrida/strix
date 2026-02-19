@@ -72,7 +72,9 @@ Strix are autonomous AI agents that act just like real hackers - they run your c
 
 **Prerequisites:**
 - Docker (running)
-- An LLM provider key (e.g. [get OpenAI API key](https://platform.openai.com/api-keys) or use a local LLM)
+- An LLM API key:
+  - Any [supported provider](https://docs.strix.ai/llm-providers/overview) (OpenAI, Anthropic, Google, etc.)
+  - Or [Strix Router](https://models.strix.ai) — single API key for multiple providers with $10 free credit on signup
 
 ### Installation & First Scan
 
@@ -84,7 +86,7 @@ curl -sSL https://strix.ai/install | bash
 pipx install strix-agent
 
 # Configure your AI provider
-export STRIX_LLM="openai/gpt-5"
+export STRIX_LLM="anthropic/claude-sonnet-4-6"  # or "strix/claude-sonnet-4.6" via Strix Router (https://models.strix.ai)
 export LLM_API_KEY="your-api-key"
 
 # Run your first security assessment
@@ -201,7 +203,7 @@ jobs:
 ### Configuration
 
 ```bash
-export STRIX_LLM="openai/gpt-5"
+export STRIX_LLM="anthropic/claude-sonnet-4-6"
 export LLM_API_KEY="your-api-key"
 
 # Optional
@@ -215,8 +217,8 @@ export STRIX_REASONING_EFFORT="high"  # control thinking effort (default: high, 
 
 **Recommended models for best results:**
 
+- [Anthropic Claude Sonnet 4.6](https://claude.com/platform/api) — `anthropic/claude-sonnet-4-6`
 - [OpenAI GPT-5](https://openai.com/api/) — `openai/gpt-5`
-- [Anthropic Claude Sonnet 4.5](https://claude.com/platform/api) — `anthropic/claude-sonnet-4-5`
 - [Google Gemini 3 Pro Preview](https://cloud.google.com/vertex-ai) — `vertex_ai/gemini-3-pro-preview`
 
 See the [LLM Providers documentation](https://docs.strix.ai/llm-providers/overview) for all supported providers including Vertex AI, Bedrock, Azure, and local models.
