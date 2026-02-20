@@ -264,6 +264,8 @@ class LLM:
             if direct_cost is not None:
                 return float(direct_cost)
         try:
+            if hasattr(response, "_hidden_params"):
+                response._hidden_params.pop("custom_llm_provider", None)
             return completion_cost(response, model=self.config.canonical_model) or 0.0
         except Exception:  # noqa: BLE001
             return 0.0
