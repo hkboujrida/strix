@@ -18,7 +18,8 @@ from rich.panel import Panel
 from rich.text import Text
 
 from strix.config import Config, apply_saved_config, save_current_config
-from strix.llm.utils import get_litellm_model_name, get_strix_api_base
+from strix.config.config import resolve_llm_config
+from strix.llm.utils import resolve_strix_model
 
 
 apply_saved_config()
@@ -211,6 +212,8 @@ async def warm_up_llm() -> None:
 
     try:
         model_name, api_key, api_base = resolve_llm_config()
+        litellm_model, _ = resolve_strix_model(model_name)
+        litellm_model = litellm_model or model_name
 
         test_messages = [
             {"role": "system", "content": "You are a helpful assistant."},
@@ -219,7 +222,8 @@ async def warm_up_llm() -> None:
 
         llm_timeout = int(Config.get("llm_timeout") or "300")
 
-        litellm_model = get_litellm_model_name(model_name) or model_name
+        api_model, _ = resolve_strix_model(model_name)
+        litellm_model = api_model or model_name
         completion_kwargs: dict[str, Any] = {
             "model": litellm_model,
             "messages": test_messages,

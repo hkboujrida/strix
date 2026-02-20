@@ -3,48 +3,38 @@ import re
 from typing import Any
 
 
-STRIX_API_BASE = "https://models.strix.ai/api/v1"
-
-STRIX_PROVIDER_PREFIXES: dict[str, str] = {
-    "claude-": "anthropic",
-    "gpt-": "openai",
-    "gemini-": "gemini",
+STRIX_MODEL_MAP: dict[str, str] = {
+    "claude-sonnet-4.6": "anthropic/claude-sonnet-4-6",
+    "claude-opus-4.6": "anthropic/claude-opus-4-6",
+    "gpt-5.2": "openai/gpt-5.2",
+    "gpt-5.1": "openai/gpt-5.1",
+    "gpt-5": "openai/gpt-5",
+    "gpt-5.2-codex": "openai/gpt-5.2-codex",
+    "gpt-5.1-codex-max": "openai/gpt-5.1-codex-max",
+    "gpt-5.1-codex": "openai/gpt-5.1-codex",
+    "gpt-5-codex": "openai/gpt-5-codex",
+    "gemini-3-pro-preview": "gemini/gemini-3-pro-preview",
+    "gemini-3-flash-preview": "gemini/gemini-3-flash-preview",
+    "glm-5": "openrouter/z-ai/glm-5",
+    "glm-4.7": "openrouter/z-ai/glm-4.7",
 }
 
 
-def is_strix_model(model_name: str | None) -> bool:
-    """Check if model uses strix/ prefix."""
-    return bool(model_name and model_name.startswith("strix/"))
+def resolve_strix_model(model_name: str | None) -> tuple[str | None, str | None]:
+    """Resolve a strix/ model into names for API calls and capability lookups.
 
-
-def get_strix_api_base(model_name: str | None) -> str | None:
-    """Return Strix API base URL if using strix/ model, None otherwise."""
-    if is_strix_model(model_name):
-        return STRIX_API_BASE
-    return None
-
-
-def get_litellm_model_name(model_name: str | None) -> str | None:
-    """Convert strix/ prefixed model to litellm-compatible provider/model format.
-
-    Maps strix/ models to their corresponding litellm provider:
-    - strix/claude-* -> anthropic/claude-*
-    - strix/gpt-* -> openai/gpt-*
-    - strix/gemini-* -> gemini/gemini-*
-    - Other models -> openai/<model> (routed via Strix API)
+    Returns (api_model, canonical_model):
+    - api_model: openai/<base> for API calls (Strix API is OpenAI-compatible)
+    - canonical_model: actual provider model name for litellm capability lookups
+    Non-strix models return the same name for both.
     """
-    if not model_name:
-        return model_name
-    if not model_name.startswith("strix/"):
-        return model_name
+    if not model_name or not model_name.startswith("strix/"):
+        return model_name, model_name
 
     base_model = model_name[6:]
-
-    for prefix, provider in STRIX_PROVIDER_PREFIXES.items():
-        if base_model.startswith(prefix):
-            return f"{provider}/{base_model}"
-
-    return f"openai/{base_model}"
+    api_model = f"openai/{base_model}"
+    canonical_model = STRIX_MODEL_MAP.get(base_model, api_model)
+    return api_model, canonical_model
 
 
 def _truncate_to_first_function(content: str) -> str:

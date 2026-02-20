@@ -4,7 +4,6 @@ from typing import Any
 import litellm
 
 from strix.config.config import Config, resolve_llm_config
-from strix.llm.utils import get_litellm_model_name
 
 
 logger = logging.getLogger(__name__)
@@ -46,8 +45,7 @@ keeping the summary concise and to the point."""
 
 def _count_tokens(text: str, model: str) -> int:
     try:
-        litellm_model = get_litellm_model_name(model) or model
-        count = litellm.token_counter(model=litellm_model, text=text)
+        count = litellm.token_counter(model=model, text=text)
         return int(count)
     except Exception:
         logger.exception("Failed to count tokens")
@@ -109,9 +107,8 @@ def _summarize_messages(
     _, api_key, api_base = resolve_llm_config()
 
     try:
-        litellm_model = get_litellm_model_name(model) or model
         completion_args: dict[str, Any] = {
-            "model": litellm_model,
+            "model": model,
             "messages": [{"role": "user", "content": prompt}],
             "timeout": timeout,
         }
@@ -161,7 +158,7 @@ class MemoryCompressor:
     ):
         self.max_images = max_images
         self.model_name = model_name or Config.get("strix_llm")
-        self.timeout = timeout or int(Config.get("strix_memory_compressor_timeout") or "30")
+        self.timeout = timeout or int(Config.get("strix_memory_compressor_timeout") or "120")
 
         if not self.model_name:
             raise ValueError("STRIX_LLM environment variable must be set and not empty")
