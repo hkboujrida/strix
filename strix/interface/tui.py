@@ -687,7 +687,7 @@ class StrixTUIApp(App):  # type: ignore[misc]
     CSS_PATH = "assets/tui_styles.tcss"
     ALLOW_SELECT = True
 
-    SIDEBAR_MIN_WIDTH = 140
+    SIDEBAR_MIN_WIDTH = 120
 
     selected_agent_id: reactive[str | None] = reactive(default=None)
     show_splash: reactive[bool] = reactive(default=True)
