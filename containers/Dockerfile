@@ -97,7 +97,36 @@ RUN mkdir -p /home/pentester/.npm-global
 
 RUN npm install -g retire@latest && \
     npm install -g eslint@latest && \
-    npm install -g js-beautify@latest
+    npm install -g js-beautify@latest && \
+    npm install -g @ast-grep/cli@latest && \
+    npm install -g tree-sitter-cli@latest
+
+RUN set -eux; \
+    TS_PARSER_DIR="/home/pentester/.tree-sitter/parsers"; \
+    mkdir -p "${TS_PARSER_DIR}"; \
+    for repo in tree-sitter-java tree-sitter-javascript tree-sitter-python tree-sitter-go tree-sitter-bash tree-sitter-json tree-sitter-yaml tree-sitter-typescript; do \
+        if [ "$repo" = "tree-sitter-yaml" ]; then \
+            repo_url="https://github.com/tree-sitter-grammars/${repo}.git"; \
+        else \
+            repo_url="https://github.com/tree-sitter/${repo}.git"; \
+        fi; \
+        if [ ! -d "${TS_PARSER_DIR}/${repo}" ]; then \
+            git clone --depth 1 "${repo_url}" "${TS_PARSER_DIR}/${repo}"; \
+        fi; \
+    done; \
+    if [ -d "${TS_PARSER_DIR}/tree-sitter-typescript/typescript" ]; then \
+        ln -sfn "${TS_PARSER_DIR}/tree-sitter-typescript/typescript" "${TS_PARSER_DIR}/tree-sitter-typescript-typescript"; \
+    fi; \
+    if [ -d "${TS_PARSER_DIR}/tree-sitter-typescript/tsx" ]; then \
+        ln -sfn "${TS_PARSER_DIR}/tree-sitter-typescript/tsx" "${TS_PARSER_DIR}/tree-sitter-typescript-tsx"; \
+    fi; \
+    tree-sitter init-config >/dev/null 2>&1 || true; \
+    TS_CONFIG="/home/pentester/.config/tree-sitter/config.json"; \
+    mkdir -p "$(dirname "${TS_CONFIG}")"; \
+    [ -f "${TS_CONFIG}" ] || printf '{}\n' > "${TS_CONFIG}"; \
+    TMP_CFG="$(mktemp)"; \
+    jq --arg p "${TS_PARSER_DIR}" '.["parser-directories"] = ((.["parser-directories"] // []) + [$p] | unique)' "${TS_CONFIG}" > "${TMP_CFG}"; \
+    mv "${TMP_CFG}" "${TS_CONFIG}"
 
 WORKDIR /home/pentester/tools
 RUN git clone https://github.com/aravind0x7/JS-Snooper.git && \
@@ -110,6 +139,18 @@ RUN git clone https://github.com/aravind0x7/JS-Snooper.git && \
 USER root
 
 RUN curl -sSfL https://raw.githubusercontent.com/trufflesecurity/trufflehog/main/scripts/install.sh | sh -s -- -b /usr/local/bin
+RUN set -eux; \
+    ARCH="$(uname -m)"; \
+    case "$ARCH" in \
+        x86_64) GITLEAKS_ARCH="x64" ;; \
+        aarch64|arm64) GITLEAKS_ARCH="arm64" ;; \
+        *) echo "Unsupported architecture: $ARCH" >&2; exit 1 ;; \
+    esac; \
+    TAG="$(curl -fsSL https://api.github.com/repos/gitleaks/gitleaks/releases/latest | jq -r .tag_name)"; \
+    curl -fsSL "https://github.com/gitleaks/gitleaks/releases/download/${TAG}/gitleaks_${TAG#v}_linux_${GITLEAKS_ARCH}.tar.gz" -o /tmp/gitleaks.tgz; \
+    tar -xzf /tmp/gitleaks.tgz -C /tmp; \
+    install -m 0755 /tmp/gitleaks /usr/local/bin/gitleaks; \
+    rm -f /tmp/gitleaks /tmp/gitleaks.tgz
 
 RUN apt-get update && apt-get install -y zaproxy
 

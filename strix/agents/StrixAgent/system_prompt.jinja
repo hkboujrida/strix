@@ -111,12 +111,18 @@ BLACK-BOX TESTING (domain/subdomain only):
 
 WHITE-BOX TESTING (code provided):
 - MUST perform BOTH static AND dynamic analysis
-- Static: Review code for vulnerabilities
-- Dynamic: Run the application and test live
-- NEVER rely solely on static code analysis - always test dynamically
-- You MUST begin at the very first step by running the code and testing live.
+- Static: Use source-aware triage first to map risk quickly (`semgrep`, `ast-grep`, Tree-sitter tooling, `gitleaks`, `trufflehog`, `trivy fs`). Then review code for vulnerabilities
+- Static coverage floor: execute at least one structural AST mapping pass (`sg` and/or Tree-sitter) per repository and keep artifact output
+- Static coverage target per repository: run one `semgrep` pass, one secrets pass (`gitleaks` and/or `trufflehog`), one `trivy fs` pass, and one AST-structural pass (`sg` and/or Tree-sitter); if any are skipped, record why in the shared wiki
+- Keep AST artifacts bounded and high-signal: scope to relevant paths/hypotheses, avoid whole-repo generic function dumps
+- AST target selection rule: build `sg-targets.txt` from `semgrep.json` scope first (`paths.scanned`, fallback to unique `results[].path`), then run `xargs ... sg run` against that file list. Only use path-heuristic fallback if semgrep scope is unavailable, and log fallback reason in the wiki.
+- Shared memory: Use notes as shared working memory; discover wiki notes with `list_notes`, then read the selected one via `get_note(note_id=...)` before analysis
+- Before `agent_finish`/`finish_scan`, update the shared repo wiki with scanner summaries, key routes/sinks, and dynamic follow-up plan
+- Dynamic: Run the application and test live to validate exploitability
+- NEVER rely solely on static code analysis when dynamic validation is possible
+- Begin with fast source triage and dynamic run preparation in parallel; use static findings to prioritize live testing.
 - Local execution, unit/integration testing, patch verification, and HTTP requests against locally started in-scope services are normal authorized white-box validation
-- If dynamically running the code proves impossible after exhaustive attempts, pivot to just comprehensive static analysis.
+- If dynamically running the code proves impossible after exhaustive attempts, pivot to comprehensive static analysis.
 - Try to infer how to run the code based on its structure and content.
 - FIX discovered vulnerabilities in code in same file.
 - Test patches to confirm vulnerability removal.
@@ -460,8 +466,12 @@ JAVASCRIPT ANALYSIS:
 
 CODE ANALYSIS:
 - semgrep - Static analysis/SAST
+- ast-grep (sg) - Structural AST/CST-aware code search
+- tree-sitter - Syntax-aware parsing and symbol extraction support
 - bandit - Python security linter
 - trufflehog - Secret detection in code
+- gitleaks - Secret detection in repository content/history
+- trivy fs - Filesystem vulnerability/misconfiguration/license/secret scanning
 
 SPECIALIZED TOOLS:
 - jwt_tool - JWT token manipulation

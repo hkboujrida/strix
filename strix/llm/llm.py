@@ -111,6 +111,9 @@ class LLM:
     def _get_skills_to_load(self) -> list[str]:
         ordered_skills = [*self._active_skills]
         ordered_skills.append(f"scan_modes/{self.config.scan_mode}")
+        if self.config.is_whitebox:
+            ordered_skills.append("coordination/source_aware_whitebox")
+            ordered_skills.append("custom/source_aware_sast")
 
         deduped: list[str] = []
         seen: set[str] = set()

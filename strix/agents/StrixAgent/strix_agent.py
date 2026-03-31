@@ -59,6 +59,7 @@ class StrixAgent(BaseAgent):
     async def execute_scan(self, scan_config: dict[str, Any]) -> dict[str, Any]:  # noqa: PLR0912
         user_instructions = scan_config.get("user_instructions", "")
         targets = scan_config.get("targets", [])
+        diff_scope = scan_config.get("diff_scope", {}) or {}
         self.llm.set_system_prompt_context(self._build_system_scope_context(scan_config))
 
         repositories = []
@@ -119,6 +120,28 @@ class StrixAgent(BaseAgent):
         if ip_addresses:
             task_parts.append("\n\nIP Addresses:")
             task_parts.extend(f"- {ip}" for ip in ip_addresses)
+
+        if diff_scope.get("active"):
+            task_parts.append("\n\nScope Constraints:")
+            task_parts.append(
+                "- Pull request diff-scope mode is active. Prioritize changed files "
+                "and use other files only for context."
+            )
+            for repo_scope in diff_scope.get("repos", []):
+                repo_label = (
+                    repo_scope.get("workspace_subdir")
+                    or repo_scope.get("source_path")
+                    or "repository"
+                )
+                changed_count = repo_scope.get("analyzable_files_count", 0)
+                deleted_count = repo_scope.get("deleted_files_count", 0)
+                task_parts.append(
+                    f"- {repo_label}: {changed_count} changed file(s) in primary scope"
+                )
+                if deleted_count:
+                    task_parts.append(
+                        f"- {repo_label}: {deleted_count} deleted file(s) are context-only"
+                    )
 
         task_description = " ".join(task_parts)
 

@@ -38,6 +38,10 @@ The skills are dynamically injected into the agent's system prompt, allowing it 
 | **`/reconnaissance`** | Advanced information gathering and enumeration techniques for comprehensive attack surface mapping |
 | **`/custom`** | Community-contributed skills for specialized or industry-specific testing scenarios |
 
+Notable source-aware skills:
+- `source_aware_whitebox` (coordination): white-box orchestration playbook
+- `source_aware_sast` (custom): semgrep/AST/secrets/supply-chain static triage workflow
+
 ---
 
 ## 🎨 Creating New Skills

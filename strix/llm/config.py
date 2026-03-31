@@ -13,6 +13,7 @@ class LLMConfig:
         skills: list[str] | None = None,
         timeout: int | None = None,
         scan_mode: str = "deep",
+        is_whitebox: bool = False,
         interactive: bool = False,
         reasoning_effort: str | None = None,
         system_prompt_context: dict[str, Any] | None = None,
@@ -33,7 +34,7 @@ class LLMConfig:
         self.timeout = timeout or int(Config.get("llm_timeout") or "300")
 
         self.scan_mode = scan_mode if scan_mode in ["quick", "standard", "deep"] else "deep"
-
+        self.is_whitebox = is_whitebox
         self.interactive = interactive
         self.reasoning_effort = reasoning_effort
         self.system_prompt_context = system_prompt_context or {}
