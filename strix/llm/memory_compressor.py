@@ -9,8 +9,70 @@ from strix.config.config import Config, resolve_llm_config
 logger = logging.getLogger(__name__)
 
 
-MAX_TOTAL_TOKENS = 100_000
-MIN_RECENT_MESSAGES = 15
+DEFAULT_MAX_TOTAL_TOKENS = 100_000
+DEFAULT_MIN_RECENT_MESSAGES = 15
+
+# Reserve ~20% of the context window for the model's output and overhead
+CONTEXT_RESERVE_RATIO = 0.8
+# Minimum recent messages to keep even on very small context models
+ABSOLUTE_MIN_RECENT_MESSAGES = 4
+
+
+def _get_context_limits(model_name: str) -> tuple[int, int]:
+    """Get (max_input_tokens, min_recent_messages) adapted to the model's context window.
+
+    Checks (in order):
+    1. STRIX_MODEL_CONTEXT_WINDOW env var (for self-hosted models)
+    2. litellm model registry
+    3. Falls back to defaults
+
+    Returns:
+        Tuple of (max_input_tokens, min_recent_messages)
+    """
+    import os
+
+    max_tokens: int | None = None
+
+    # 1. Check env var override (essential for self-hosted models like vLLM)
+    env_context = os.getenv("STRIX_MODEL_CONTEXT_WINDOW")
+    if env_context:
+        try:
+            max_tokens = int(env_context)
+            logger.info("Using STRIX_MODEL_CONTEXT_WINDOW=%d", max_tokens)
+        except ValueError:
+            logger.warning("Invalid STRIX_MODEL_CONTEXT_WINDOW value: %s", env_context)
+
+    # 2. Try litellm detection via model info (actual input context window).
+    # NOTE: litellm.get_max_tokens() returns max OUTPUT tokens, not the
+    # context window, which would cause over-aggressive compression.
+    if not max_tokens:
+        try:
+            info = litellm.get_model_info(model_name)
+            max_tokens = info.get("max_input_tokens") or info.get("max_tokens")
+        except Exception:
+            logger.debug("Could not detect context window for %s", model_name)
+
+    # 3. Compute scaled limits
+    if max_tokens and max_tokens > 0:
+        max_input = int(max_tokens * CONTEXT_RESERVE_RATIO)
+
+        # Scale recent messages: ~15 for 128K+, ~8 for 32K, ~4 for 8K
+        if max_tokens >= 100_000:
+            min_recent = 15
+        elif max_tokens >= 64_000:
+            min_recent = 12
+        elif max_tokens >= 32_000:
+            min_recent = 8
+        else:
+            min_recent = max(ABSOLUTE_MIN_RECENT_MESSAGES, max_tokens // 4000)
+
+        logger.debug(
+            "Context limits for %s: max_input=%d, min_recent=%d (model context=%d)",
+            model_name, max_input, min_recent, max_tokens,
+        )
+        return max_input, min_recent
+
+    return DEFAULT_MAX_TOTAL_TOKENS, DEFAULT_MIN_RECENT_MESSAGES
 
 SUMMARY_PROMPT_TEMPLATE = """You are an agent performing context
 condensation for a security agent. Your job is to compress scan data while preserving
@@ -169,23 +231,23 @@ class MemoryCompressor:
     ) -> list[dict[str, Any]]:
         """Compress conversation history to stay within token limits.
 
+        Automatically adapts to the model's context window size.
+
         Strategy:
         1. Handle image limits first
         2. Keep all system messages
-        3. Keep minimum recent messages
+        3. Keep minimum recent messages (scaled to model context)
         4. Summarize older messages when total tokens exceed limit
-
-        The compression preserves:
-        - All system messages unchanged
-        - Most recent messages intact
-        - Critical security context in summaries
-        - Recent images for visual context
-        - Technical details and findings
         """
         if not messages:
             return messages
 
         _handle_images(messages, self.max_images)
+
+        # Type assertion since we ensure model_name is not None in __init__
+        model_name: str = self.model_name  # type: ignore[assignment]
+
+        max_total_tokens, min_recent_messages = _get_context_limits(model_name)
 
         system_msgs = []
         regular_msgs = []
@@ -195,21 +257,20 @@ class MemoryCompressor:
             else:
                 regular_msgs.append(msg)
 
-        recent_msgs = regular_msgs[-MIN_RECENT_MESSAGES:]
-        old_msgs = regular_msgs[:-MIN_RECENT_MESSAGES]
-
-        # Type assertion since we ensure model_name is not None in __init__
-        model_name: str = self.model_name  # type: ignore[assignment]
+        recent_msgs = regular_msgs[-min_recent_messages:]
+        old_msgs = regular_msgs[:-min_recent_messages] if len(regular_msgs) > min_recent_messages else []
 
         total_tokens = sum(
             _get_message_tokens(msg, model_name) for msg in system_msgs + regular_msgs
         )
 
-        if total_tokens <= MAX_TOTAL_TOKENS * 0.9:
+        if total_tokens <= max_total_tokens * 0.9:
             return messages
 
+        # Smaller chunk_size for smaller context windows = more aggressive compression
+        chunk_size = 5 if max_total_tokens < 30_000 else 10
+
         compressed = []
-        chunk_size = 10
         for i in range(0, len(old_msgs), chunk_size):
             chunk = old_msgs[i : i + chunk_size]
             summary = _summarize_messages(chunk, model_name, self.timeout)

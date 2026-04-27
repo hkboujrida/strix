@@ -84,7 +84,7 @@ class DockerRuntime(AbstractRuntime):
 
             # Resolve and validate the source path
             try:
-                local_path_obj = Path(source_path).resolve()
+                local_path_obj = Path(source_path).expanduser().resolve()
                 if not local_path_obj.exists():
                     raise SandboxInitializationError(
                         "Source path does not exist",
@@ -118,6 +118,37 @@ class DockerRuntime(AbstractRuntime):
             logger.info(f"Mounting {host_path} -> {container_path}")
 
         return volumes if volumes else None
+
+    def _volumes_match(
+        self, container: Container, requested_volumes: dict[str, dict[str, str]] | None
+    ) -> bool:
+        """Check if a container's existing volume mounts match the requested volumes.
+
+        Args:
+            container: Existing Docker container to inspect
+            requested_volumes: Desired volume configuration (host_path -> {bind, mode})
+
+        Returns:
+            True if the volumes match, False otherwise
+        """
+        container.reload()
+        host_config = container.attrs.get("HostConfig", {})
+        existing_binds = host_config.get("Binds") or []
+
+        # Build a set of "host_path:container_path:mode" from existing binds
+        existing_set: set[str] = set()
+        for bind_str in existing_binds:
+            existing_set.add(bind_str)
+
+        # Build the expected set from requested volumes
+        requested_set: set[str] = set()
+        if requested_volumes:
+            for host_path, mount_config in requested_volumes.items():
+                container_path = mount_config["bind"]
+                mode = mount_config.get("mode", "rw")
+                requested_set.add(f"{host_path}:{container_path}:{mode}")
+
+        return existing_set == requested_set
 
     def _verify_image_available(self, image_name: str, max_retries: int = 3) -> None:
         for attempt in range(max_retries):
@@ -247,7 +278,17 @@ class DockerRuntime(AbstractRuntime):
             try:
                 self._scan_container.reload()
                 if self._scan_container.status == "running":
-                    return self._scan_container
+                    if self._volumes_match(self._scan_container, volumes):
+                        return self._scan_container
+                    logger.info(
+                        "Volume mounts changed, recreating container %s", container_name
+                    )
+                    with contextlib.suppress(Exception):
+                        self._scan_container.stop(timeout=5)
+                    self._scan_container.remove(force=True)
+                    self._scan_container = None
+                    self._tool_server_port = None
+                    self._tool_server_token = None
             except NotFound:
                 self._scan_container = None
                 self._tool_server_port = None
@@ -257,6 +298,15 @@ class DockerRuntime(AbstractRuntime):
         try:
             container = self.client.containers.get(container_name)
             container.reload()
+
+            if not self._volumes_match(container, volumes):
+                logger.info(
+                    "Volume mounts changed, recreating container %s", container_name
+                )
+                with contextlib.suppress(Exception):
+                    container.stop(timeout=5)
+                container.remove(force=True)
+                raise NotFound("Volumes changed, need recreation")  # noqa: TRY301
 
             if container.status != "running":
                 container.start()
@@ -275,6 +325,16 @@ class DockerRuntime(AbstractRuntime):
             )
             if containers:
                 container = containers[0]
+
+                if not self._volumes_match(container, volumes):
+                    logger.info(
+                        "Volume mounts changed on label-matched container, recreating"
+                    )
+                    with contextlib.suppress(Exception):
+                        container.stop(timeout=5)
+                    container.remove(force=True)
+                    return self._create_container(scan_id, volumes=volumes)
+
                 if container.status != "running":
                     container.start()
                     time.sleep(2)

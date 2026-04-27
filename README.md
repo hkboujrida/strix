@@ -88,6 +88,9 @@ export LLM_API_KEY="your-api-key"
 strix --target ./app-directory
 ```
 
+> [!TIP]
+> **Local Code Mounting:** When scanning local directories, Strix uses high-performance Docker bind mounts. Ensure your target path is correct, and Strix will handle resolution (including `~` expansion) automatically.
+
 > [!NOTE]
 > First run automatically pulls the sandbox Docker image. Results are saved to `strix_runs/<run-name>`
 
@@ -232,7 +235,12 @@ export LLM_API_KEY="your-api-key"
 export LLM_API_BASE="your-api-base-url"  # if using a local model, e.g. Ollama, LMStudio
 export PERPLEXITY_API_KEY="your-api-key"  # for search capabilities
 export STRIX_REASONING_EFFORT="high"  # control thinking effort (default: high, quick scan: medium)
+export STRIX_MODEL_CONTEXT_WINDOW="32768"  # explicitly set context window (auto-optimizes prompt & memory)
+export STRIX_MAX_PARALLEL_AGENTS="5"  # limit parallel subagents to manage host load (default: 5)
 ```
+
+> [!TIP]
+> **Optimizing for Small Context Models:** For local or self-hosted models with limited context (e.g., 32K or 64K), set `STRIX_MODEL_CONTEXT_WINDOW`. Strix will automatically switch to compact tool definitions and more aggressive memory compression to stay within limits.
 
 > [!NOTE]
 > Strix automatically saves your configuration to `~/.strix/cli-config.json`, so you don't have to re-enter it on every run.

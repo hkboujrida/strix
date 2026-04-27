@@ -300,6 +300,32 @@ def get_tools_prompt() -> str:
     return "\n\n".join(xml_sections)
 
 
+def get_tools_prompt_compact() -> str:
+    """Generate a compact tools prompt by stripping verbose XML elements.
+
+    Removes <details>, <returns>, and <examples> sections while keeping
+    tool name, description, and parameters. Reduces token usage by ~60-70%.
+    """
+    import re
+
+    full_prompt = get_tools_prompt()
+
+    # Strip verbose sections while preserving structure
+    compact = re.sub(
+        r"\s*<details>.*?</details>", "", full_prompt, flags=re.DOTALL
+    )
+    compact = re.sub(
+        r"\s*<returns.*?>.*?</returns>", "", compact, flags=re.DOTALL
+    )
+    compact = re.sub(
+        r"\s*<examples?>.*?</examples?>", "", compact, flags=re.DOTALL
+    )
+    # Remove excessive blank lines
+    compact = re.sub(r"\n{3,}", "\n\n", compact)
+
+    return compact
+
+
 def clear_registry() -> None:
     tools.clear()
     _tools_by_name.clear()

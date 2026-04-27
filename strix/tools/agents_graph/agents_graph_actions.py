@@ -457,6 +457,10 @@ def create_agent(
             "llm_config": llm_config,
             "state": state,
         }
+        if parent_agent and hasattr(parent_agent, "non_interactive"):
+            agent_config["non_interactive"] = parent_agent.non_interactive
+        if parent_agent and hasattr(parent_agent, "local_sources") and parent_agent.local_sources:
+            agent_config["local_sources"] = parent_agent.local_sources
 
         agent = StrixAgent(agent_config)
 

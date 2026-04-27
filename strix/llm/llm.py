@@ -18,7 +18,7 @@ from strix.llm.utils import (
     parse_tool_invocations,
 )
 from strix.skills import load_skills
-from strix.tools import get_tools_prompt
+from strix.tools import get_tools_prompt, get_tools_prompt_compact
 from strix.utils.resource_paths import get_strix_resource_path
 
 
@@ -97,8 +97,11 @@ class LLM:
             skill_content = load_skills(skills_to_load)
             env.globals["get_skill"] = lambda name: skill_content.get(name, "")
 
+            # Use compact tool definitions for small context models
+            tools_prompt_fn = self._select_tools_prompt()
+
             result = env.get_template("system_prompt.jinja").render(
-                get_tools_prompt=get_tools_prompt,
+                get_tools_prompt=tools_prompt_fn,
                 loaded_skill_names=list(skill_content.keys()),
                 interactive=self.config.interactive,
                 system_prompt_context=self._system_prompt_context,
@@ -140,6 +143,30 @@ class LLM:
             self.system_prompt = updated_prompt
 
         return added
+
+    def _select_tools_prompt(self) -> type[get_tools_prompt]:
+        """Select full or compact tools prompt based on model context window."""
+        import os
+
+        try:
+            context_window = None
+            env_context = os.getenv("STRIX_MODEL_CONTEXT_WINDOW")
+            if env_context:
+                context_window = int(env_context)
+            else:
+                # Use get_model_info to get the actual input context window.
+                # NOTE: litellm.get_max_tokens() returns max OUTPUT tokens, not
+                # the context window, so most models (Claude, GPT-4.1, Gemini)
+                # would incorrectly trigger compact mode.
+                info = litellm.get_model_info(self.config.model_name)
+                context_window = info.get("max_input_tokens") or info.get("max_tokens")
+
+            if context_window and context_window <= 64_000:
+                return get_tools_prompt_compact
+        except Exception:  # noqa: BLE001
+            pass
+
+        return get_tools_prompt
 
     def set_agent_identity(self, agent_name: str | None, agent_id: str | None) -> None:
         if agent_name:

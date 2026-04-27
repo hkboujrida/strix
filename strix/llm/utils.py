@@ -66,7 +66,7 @@ def _truncate_to_first_function(content: str) -> str:
         return content
 
     function_starts = [
-        match.start() for match in re.finditer(r"<function=|<invoke\s+name=", content)
+        match.start() for match in re.finditer(r"<function(?:=|\s+name=)|<invoke\s+name=", content)
     ]
 
     if len(function_starts) >= 2:
@@ -83,8 +83,8 @@ def parse_tool_invocations(content: str) -> list[dict[str, Any]] | None:
 
     tool_invocations: list[dict[str, Any]] = []
 
-    fn_regex_pattern = r"<function=([^>]+)>\n?(.*?)</function>"
-    fn_param_regex_pattern = r"<parameter=([^>]+)>(.*?)</parameter>"
+    fn_regex_pattern = r"<function(?:=|\s+name=)[\"']?([^>\"'\s]+)[\"']?[^>]*>\n?(.*?)</function>"
+    fn_param_regex_pattern = r"<parameter(?:=|\s+name=)[\"']?([^>\"'\s]+)[\"']?[^>]*>(.*?)</parameter>"
 
     fn_matches = re.finditer(fn_regex_pattern, content, re.DOTALL)
 
@@ -112,10 +112,9 @@ def fix_incomplete_tool_call(content: str) -> str:
 
     Handles both ``<function=…>`` and ``<invoke name="…">`` formats.
     """
-    has_open = "<function=" in content or "<invoke " in content
-    count_open = content.count("<function=") + content.count("<invoke ")
+    func_matches = len(re.findall(r"<function(?:=|\s+name=)|<invoke\s+name=", content))
     has_close = "</function>" in content or "</invoke>" in content
-    if has_open and count_open == 1 and not has_close:
+    if func_matches == 1 and not has_close:
         content = content.rstrip()
         content = content + "function>" if content.endswith("</") else content + "\n</function>"
     return content
@@ -139,13 +138,13 @@ def clean_content(content: str) -> str:
     content = normalize_tool_format(content)
     content = fix_incomplete_tool_call(content)
 
-    tool_pattern = r"<function=[^>]+>.*?</function>"
+    tool_pattern = r"<function(?:=|\s+name=)[^>]+>.*?</function>"
     cleaned = re.sub(tool_pattern, "", content, flags=re.DOTALL)
 
-    incomplete_tool_pattern = r"<function=[^>]+>.*$"
+    incomplete_tool_pattern = r"<function(?:=|\s+name=)[^>]+>.*$"
     cleaned = re.sub(incomplete_tool_pattern, "", cleaned, flags=re.DOTALL)
 
-    partial_tag_pattern = r"<f(?:u(?:n(?:c(?:t(?:i(?:o(?:n(?:=(?:[^>]*)?)?)?)?)?)?)?)?)?$"
+    partial_tag_pattern = r"<f(?:u(?:n(?:c(?:t(?:i(?:o(?:n(?:(?:\s+name=|=)(?:[^>]*)?)?)?)?)?)?)?)?)?$"
     cleaned = re.sub(partial_tag_pattern, "", cleaned)
 
     hidden_xml_patterns = [

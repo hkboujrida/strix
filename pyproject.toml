@@ -4,7 +4,7 @@ version = "0.8.3"
 description = "Open-source AI Hackers for your apps"
 readme = "README.md"
 license = "Apache-2.0"
-requires-python = ">=3.12"
+requires-python = ">=3.12,<4.0"
 authors = [
   { name = "Strix", email = "hi@usestrix.com" },
 ]
@@ -51,6 +51,9 @@ dependencies = [
 [project.scripts]
 strix = "strix.interface.main:main"
 
+[tool.poetry.scripts]
+strix = "strix.interface.main:main"
+
 [project.optional-dependencies]
 vertex = ["google-cloud-aiplatform>=1.38"]
 sandbox = [
@@ -88,6 +91,9 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["strix"]
+
+[tool.poetry]
+packages = [{ include = "strix" }]
 
 # ============================================================================
 # Type Checking Configuration
